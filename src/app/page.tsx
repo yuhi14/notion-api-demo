@@ -4,57 +4,60 @@ import Image from "next/image";
 import { NotionImage } from "@/components/blocks/NotionImage";
 import { NotionVideo } from "@/components/blocks/NotionVideo";
 import {
-  BlockObjectResponse,
   GetBlockResponse,
   GetPageResponse,
   ListBlockChildrenResponse,
-  PageObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 
 const NOTION_LOOT_ID = process.env.NEXT_PUBLIC_NOTION_LOOT_ID || "";
 const API_ROOT = process.env.NEXT_PUBLIC_API_ROOT || "http://localhost:3000";
-
-const fetchPageRetrieve = async (pageId: string): Promise<GetPageResponse> => {
-  const res = await fetch(`${API_ROOT}/api/page-retrieve/${pageId}`);
-  return await res.json();
-};
-const fetchBlockRetrieve = async (blockId: string): Promise<GetBlockResponse> => {
-  const res = await fetch(`${API_ROOT}/api/block-retrieve/${blockId}`);
-  return await res.json();
-};
-const fetchBlockChildren = async (blockId: string): Promise<ListBlockChildrenResponse> => {
-  const res = await fetch(`${API_ROOT}/api/block-children/${blockId}`);
-  return await res.json();
+const MESSAGES = {
+  PAGE_LOAD_ERROR: "ページを読み込めませんでした。NotionのページIDが正しいか確認してください。",
+  UNVERIFIED_ERROR: "未検証のエラーが発生しました。",
 };
 
-const isPageObjectResponse = (response: GetPageResponse): response is PageObjectResponse => {
-  return "properties" in response;
+const fetchPageRetrieve = async (pageId: string): Promise<GetPageResponse | null> => {
+  try {
+    const res = await fetch(`${API_ROOT}/api/page-retrieve/${pageId}`, { cache: "no-store" });
+    return await res.json();
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
 };
-const isBlockObjectResponse = (response: GetBlockResponse): response is BlockObjectResponse => {
-  return "type" in response;
+const fetchBlockRetrieve = async (blockId: string): Promise<GetBlockResponse | null> => {
+  try {
+    const res = await fetch(`${API_ROOT}/api/block-retrieve/${blockId}`, { cache: "no-store" });
+    return await res.json();
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+};
+const fetchBlockChildren = async (blockId: string): Promise<ListBlockChildrenResponse | null> => {
+  try {
+    const res = await fetch(`${API_ROOT}/api/block-children/${blockId}`, { cache: "no-store" });
+    return await res.json();
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
 };
 
 const getTargetId = async () => {
-  try {
-    const lootBlockChildren = await fetchBlockChildren(NOTION_LOOT_ID);
-    if (lootBlockChildren.results) {
-      const codeBlock = lootBlockChildren.results.find(block =>
-        "type" in block && block.type === "code"
-      );
-      return codeBlock?.code.rich_text[0].plain_text || "";
-    }
-    return "";
-  } catch (e) {
-    console.error(e);
+  const lootBlockChildren = await fetchBlockChildren(NOTION_LOOT_ID);
+  if (lootBlockChildren && lootBlockChildren.results) {
+    const codeBlock = lootBlockChildren.results.find(block =>
+      "type" in block && block.type === "code"
+    );
+    return codeBlock?.code.rich_text[0]?.plain_text || "";
   }
+  return "";
 };
 
 export default async function Home() {
   const targetId = await getTargetId();
-
-  if (!targetId) {
-    return <>ページを読み込めませんでした。NotionのページIDが正しいか確認してください。</>;
-  }
+  if (!targetId) return <>{MESSAGES.PAGE_LOAD_ERROR}</>;
 
   const [pageRetrieve, blockRetrieve, blockChildren] = await Promise.all([
     fetchPageRetrieve(targetId),
@@ -62,8 +65,11 @@ export default async function Home() {
     fetchBlockChildren(targetId),
   ]);
 
-  if (!isPageObjectResponse(pageRetrieve)) throw new Error("type-error");
-  if (!isBlockObjectResponse(blockRetrieve)) throw new Error("type-error");
+  if (!pageRetrieve || !blockRetrieve || !blockChildren) return <>{MESSAGES.PAGE_LOAD_ERROR}</>;
+
+  if (!("properties" in pageRetrieve) || !("type" in blockRetrieve)) {
+    return <>{MESSAGES.UNVERIFIED_ERROR}</>;
+  }
 
   return (
     <div>
@@ -72,15 +78,16 @@ export default async function Home() {
         <p>Providing contents from Notion</p>
       </header>
       <div className="relative aspect-[3/1] w-full bg-gray-100">
-        {pageRetrieve.cover && pageRetrieve.cover.type === "external" && (
-          <Image
-            src={pageRetrieve.cover.external.url}
-            alt="cover"
-            fill
-            className="object-cover"
-            priority
-          />
-        )}
+        {pageRetrieve.cover && pageRetrieve.cover.type === "external"
+          && (
+            <Image
+              src={pageRetrieve.cover.external.url}
+              alt="cover"
+              fill
+              className="object-cover"
+              priority
+            />
+          )}
       </div>
       <div className="relative mx-auto w-full max-w-[800px] px-8 py-20">
         {pageRetrieve.icon && pageRetrieve.icon.type === "emoji" && (
@@ -93,8 +100,8 @@ export default async function Home() {
           {blockRetrieve.type === "child_page" && blockRetrieve.child_page.title}
         </h1>
         <div className="mt-2">
-          {blockChildren.results.map((block) => {
-            if (!isBlockObjectResponse(block)) return null;
+          {"results" in blockChildren && blockChildren.results.map((block) => {
+            if (!("type" in block)) return null;
             switch (block.type) {
               case "paragraph":
                 return <NotionParagraph key={block.id} block={block} />;
