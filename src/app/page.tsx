@@ -1,101 +1,109 @@
+import { NotionParagraph } from "@/components/blocks/NotionParagraph";
 import Image from "next/image";
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+import { NotionImage } from "@/components/blocks/NotionImage";
+import { NotionVideo } from "@/components/blocks/NotionVideo";
+import {
+  BlockObjectResponse,
+  GetBlockResponse,
+  GetPageResponse,
+  ListBlockChildrenResponse,
+  PageObjectResponse,
+} from "@notionhq/client/build/src/api-endpoints";
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+const NOTION_LOOT_ID = process.env.NEXT_PUBLIC_NOTION_LOOT_ID || "";
+const API_ROOT = process.env.NEXT_PUBLIC_API_ROOT || "http://localhost:3000";
+
+const fetchPageRetrieve = async (pageId: string): Promise<GetPageResponse> => {
+  const res = await fetch(`${API_ROOT}/api/page-retrieve/${pageId}`);
+  return await res.json();
+};
+const fetchBlockRetrieve = async (blockId: string): Promise<GetBlockResponse> => {
+  const res = await fetch(`${API_ROOT}/api/block-retrieve/${blockId}`);
+  return await res.json();
+};
+const fetchBlockChildren = async (blockId: string): Promise<ListBlockChildrenResponse> => {
+  const res = await fetch(`${API_ROOT}/api/block-children/${blockId}`);
+  return await res.json();
+};
+
+const isPageObjectResponse = (response: GetPageResponse): response is PageObjectResponse => {
+  return "properties" in response;
+};
+const isBlockObjectResponse = (response: GetBlockResponse): response is BlockObjectResponse => {
+  return "type" in response;
+};
+
+const getTargetId = async () => {
+  const lootBlockChildren = await fetchBlockChildren(NOTION_LOOT_ID);
+  if (lootBlockChildren.results) {
+    const codeBlock = lootBlockChildren.results.find(block =>
+      "type" in block && block.type === "code"
+    );
+    return codeBlock?.code.rich_text[0].plain_text || "";
+  }
+  return "";
+};
+
+export default async function Home() {
+  const targetId = await getTargetId();
+
+  if (!targetId) {
+    return <>ページを読み込めませんでした。NotionのページIDが正しいか確認してください。</>;
+  }
+
+  const [pageRetrieve, blockRetrieve, blockChildren] = await Promise.all([
+    fetchPageRetrieve(targetId),
+    fetchBlockRetrieve(targetId),
+    fetchBlockChildren(targetId),
+  ]);
+
+  if (!isPageObjectResponse(pageRetrieve)) throw new Error("type-error");
+  if (!isBlockObjectResponse(blockRetrieve)) throw new Error("type-error");
+
+  return (
+    <div>
+      <header className="px-4 py-2">
+        <p className="text-2xl font-bold">Material PF Viewer Demo</p>
+        <p>Providing contents from Notion</p>
+      </header>
+      <div className="relative aspect-[3/1] w-full bg-gray-100">
+        {pageRetrieve.cover && pageRetrieve.cover.type === "external" && (
+          <Image
+            src={pageRetrieve.cover.external.url}
+            alt="cover"
+            fill
+            className="object-cover"
+            priority
+          />
+        )}
+      </div>
+      <div className="relative mx-auto w-full max-w-[800px] px-8 py-20">
+        {pageRetrieve.icon && pageRetrieve.icon.type === "emoji" && (
+          <div className="absolute -top-12 z-50 text-8xl">
+            {pageRetrieve.icon.emoji}
+          </div>
+        )}
+
+        <h1 className="text-4xl font-bold">
+          {blockRetrieve.type === "child_page" && blockRetrieve.child_page.title}
+        </h1>
+        <div className="mt-2">
+          {blockChildren.results.map((block) => {
+            if (!isBlockObjectResponse(block)) return null;
+            switch (block.type) {
+              case "paragraph":
+                return <NotionParagraph key={block.id} block={block} />;
+              case "image":
+                return <NotionImage key={block.id} block={block} />;
+              case "video":
+                return <NotionVideo key={block.id} block={block} />;
+              default:
+                return null;
+            }
+          })}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
     </div>
   );
 }
