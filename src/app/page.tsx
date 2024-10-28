@@ -35,14 +35,18 @@ const isBlockObjectResponse = (response: GetBlockResponse): response is BlockObj
 };
 
 const getTargetId = async () => {
-  const lootBlockChildren = await fetchBlockChildren(NOTION_LOOT_ID);
-  if (lootBlockChildren.results) {
-    const codeBlock = lootBlockChildren.results.find(block =>
-      "type" in block && block.type === "code"
-    );
-    return codeBlock?.code.rich_text[0].plain_text || "";
+  try {
+    const lootBlockChildren = await fetchBlockChildren(NOTION_LOOT_ID);
+    if (lootBlockChildren.results) {
+      const codeBlock = lootBlockChildren.results.find(block =>
+        "type" in block && block.type === "code"
+      );
+      return codeBlock?.code.rich_text[0].plain_text || "";
+    }
+    return "";
+  } catch (e) {
+    console.error(e);
   }
-  return "";
 };
 
 export default async function Home() {

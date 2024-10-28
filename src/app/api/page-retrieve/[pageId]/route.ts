@@ -3,11 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { pageId: string } },
+  { params }: { params: Promise<{ pageId: string }> },
 ) {
-  const data = await notion.pages.retrieve({
-    page_id: params.pageId,
-  });
-
-  return NextResponse.json(data);
+  const pageId = (await params).pageId;
+  try {
+    const data = await notion.pages.retrieve({
+      page_id: pageId,
+    });
+    return NextResponse.json(data);
+  } catch (e) {
+    console.error(e);
+    throw new Error("notion-api-error");
+  }
 }
